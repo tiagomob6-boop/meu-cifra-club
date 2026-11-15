@@ -86,6 +86,8 @@ def init_db() -> None:
         created_at TIMESTAMP DEFAULT NOW()
     );
 
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_musicas_titulo_cantor ON musicas (LOWER(TRIM(titulo)), LOWER(TRIM(cantor)));
+
     CREATE TABLE IF NOT EXISTS pastas (
         id SERIAL PRIMARY KEY,
         nome VARCHAR(100) NOT NULL,
@@ -120,11 +122,14 @@ app = FastAPI(
 )
 
 # Habilita CORS para permitir acesso do Frontend local ou hospedado (ex: GitHub Pages)
+origins_env = os.environ.get("ALLOWED_ORIGINS", "*").strip()
+allow_origins = [o.strip() for o in origins_env.split(",") if o.strip()] if origins_env != "*" else ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allow_origins,
     allow_credentials=False,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -413,8 +418,8 @@ TAB_CONTINUATION_RE = re.compile(
 # Cabeçalhos explicitamente de tablatura/parte de solo
 EXPLICIT_TAB_HEADER_RE = re.compile(
     r"^\s*(?:"
-    r"\[(?:Tab|Tablatura|Riff|Solo\s*\d*)\]"
-    r"|Tab\s*[-–:]\s*.*"
+    r"\[(?:Tab|Tablatura|Riff|Solo\s*\d*)[^\]]*\]"
+    r"|Tab\s*[-–:].*"
     r"|Parte\s+\d+\s+de\s+\d+"
     r"|(?:Solo|Riff|Tablatura)\s*:\s*$"
     r")\s*$",
@@ -787,10 +792,17 @@ def adicionar_musica(payload: AdicionarMusicaRequest):
     if not cifra_sem_solo.strip():
         cifra_sem_solo = cifra_completa
 
-    # 5. Persistência no Neon.db
+    # 5. Persistência no Neon.db (upsert seguro para evitar duplicação)
     insert_sql = """
     INSERT INTO musicas (titulo, cantor, autor, tom, cifra_completa, cifra_sem_solo, exibir_solo)
     VALUES (%s, %s, %s, %s, %s, %s, %s)
+    ON CONFLICT (LOWER(TRIM(titulo)), LOWER(TRIM(cantor)))
+    DO UPDATE SET
+        autor = COALESCE(EXCLUDED.autor, musicas.autor),
+        tom = EXCLUDED.tom,
+        cifra_completa = EXCLUDED.cifra_completa,
+        cifra_sem_solo = EXCLUDED.cifra_sem_solo,
+        exibir_solo = EXCLUDED.exibir_solo
     RETURNING id, titulo, cantor, autor, tom, cifra_completa, cifra_sem_solo, exibir_solo, created_at;
     """
     try:

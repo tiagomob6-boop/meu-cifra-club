@@ -874,53 +874,115 @@
   }
 
   // ------------------------------------------------------------------------
-  // Impressão & Exportação PDF (@media print)
+  // Impressão & Exportação PDF (@media print) — Folha Única em 2 Colunas
   // ------------------------------------------------------------------------
   function buildPrintableSongHtml(song, addPageBreakAfter = false) {
     const effectiveKey = getEffectiveKey(song);
     const showSolo = getEffectiveSolo(song);
     const cifraText = getEffectiveCifra(song);
-    const lineCount = cifraText.split("\n").length;
-    const isShortSong = lineCount <= 34;
 
-    const stanzas = cifraText.split(/\n\s*\n/);
-    const stanzasHtml = stanzas
+    // Separa as estrofes por linhas em branco
+    const rawStanzas = cifraText.split(/\n\s*\n/);
+    const stanzasHtml = rawStanzas
       .map((stanza) => {
-        const rendered = renderCifraHtml(stanza, "print-chord", "print-section-tag");
+        const trimmed = stanza.trim();
+        if (!trimmed) return "";
+        const rendered = renderCifraHtml(trimmed, "print-chord", "print-section-tag");
         return `<pre class="print-stanza">${rendered}</pre>`;
       })
+      .filter(Boolean)
       .join("");
 
-    const classes = ["print-song-block"];
-    if (isShortSong) classes.push("print-song-short");
-    if (addPageBreakAfter) classes.push("print-song-page-break");
+    const pageClasses = ["print-song-page"];
+    if (addPageBreakAfter) pageClasses.push("print-has-page-break");
 
     const soloLabel = showSolo ? "Com Solo/Tab" : "Sem Solo";
     const autorPart = song.autor ? ` • Composição: ${escapeHtml(song.autor)}` : "";
 
     return `
-      <article class="${classes.join(" ")}">
+      <section class="${pageClasses.join(" ")}">
         <header class="print-song-header">
-          <h2 class="print-song-title">${escapeHtml(song.titulo)}</h2>
+          <div class="print-song-title-row">
+            <h2 class="print-song-title">${escapeHtml(song.titulo)}</h2>
+            <span class="print-song-tom-badge">TOM: ${escapeHtml(effectiveKey)}</span>
+          </div>
           <p class="print-song-meta">
-            ${escapeHtml(song.cantor)}${autorPart} • <strong>Tom: ${escapeHtml(effectiveKey)}</strong> (${soloLabel})
+            <strong>${escapeHtml(song.cantor)}</strong>${autorPart} • <em>${soloLabel}</em>
           </p>
         </header>
-        ${stanzasHtml}
-      </article>
+        <div class="print-columns-container">
+          ${stanzasHtml}
+        </div>
+      </section>
     `;
+  }
+
+  function adjustPrintPagesFit() {
+    const pages = el.printArea.querySelectorAll(".print-song-page");
+    pages.forEach((page) => {
+      const container = page.querySelector(".print-columns-container");
+      if (!container) return;
+
+      // Escala decrescente de tamanhos de fonte e espaçamentos
+      const fontSteps = [
+        { fontSize: "11pt", lineHeight: "1.38", stanzaMargin: "6pt" },
+        { fontSize: "10.2pt", lineHeight: "1.34", stanzaMargin: "5pt" },
+        { fontSize: "9.5pt", lineHeight: "1.30", stanzaMargin: "4.5pt" },
+        { fontSize: "9.0pt", lineHeight: "1.26", stanzaMargin: "4pt" },
+        { fontSize: "8.5pt", lineHeight: "1.22", stanzaMargin: "3.5pt" },
+        { fontSize: "8.0pt", lineHeight: "1.18", stanzaMargin: "3pt" },
+        { fontSize: "7.5pt", lineHeight: "1.15", stanzaMargin: "2.5pt" },
+      ];
+
+      for (let i = 0; i < fontSteps.length; i++) {
+        const step = fontSteps[i];
+        container.style.fontSize = step.fontSize;
+        container.style.lineHeight = step.lineHeight;
+        container.querySelectorAll(".print-stanza").forEach((st) => {
+          st.style.marginBottom = step.stanzaMargin;
+        });
+
+        // Tolerância de 4px para considerar que coube dentro da altura útil
+        if (container.scrollHeight <= container.clientHeight + 4) {
+          break;
+        }
+      }
+    });
+  }
+
+  function triggerPrintWithFit() {
+    stopAutoScroll();
+    // Exibe temporariamente para o layout engine do navegador calcular clientHeight e scrollHeight
+    el.printArea.style.display = "block";
+    el.printArea.style.position = "absolute";
+    el.printArea.style.left = "-9999px";
+    el.printArea.style.top = "0";
+    el.printArea.style.width = "186mm"; // Largura útil A4 (210mm - 2*12mm de margem)
+
+    // Força reflow e ajusta o tamanho da fonte das páginas
+    adjustPrintPagesFit();
+
+    // Restaura estilo para deixar o @media print assumir normalmente
+    el.printArea.style.display = "";
+    el.printArea.style.position = "";
+    el.printArea.style.left = "";
+    el.printArea.style.top = "";
+    el.printArea.style.width = "";
+
+    // Pequeno timeout para garantir que o render tree aplique os estilos computados
+    setTimeout(() => {
+      window.print();
+    }, 50);
   }
 
   function printSingleSong() {
     const song = getSongById(state.selectedId);
     if (!song) return;
-    stopAutoScroll();
     el.printArea.innerHTML = buildPrintableSongHtml(song, false);
-    window.print();
+    triggerPrintWithFit();
   }
 
   function printSetlistOrRepertoire() {
-    stopAutoScroll();
     const setlistSongs = state.setlistIds.map(getSongById).filter(Boolean);
     const songsToPrint = setlistSongs.length > 0 ? setlistSongs : state.musicas;
 
@@ -929,23 +991,15 @@
       return;
     }
 
-    const docTitle = setlistSongs.length > 0
-      ? `Setlist do Dia (${songsToPrint.length} músicas)`
-      : `Repertório Completo (${songsToPrint.length} músicas)`;
-
     const blocks = songsToPrint
       .map((song, idx) => buildPrintableSongHtml(song, idx < songsToPrint.length - 1))
       .join("");
 
-    el.printArea.innerHTML = `
-      <h1 class="print-doc-title">Meu-cifra-club Club — ${escapeHtml(docTitle)}</h1>
-      ${blocks}
-    `;
-    window.print();
+    el.printArea.innerHTML = blocks;
+    triggerPrintWithFit();
   }
 
   function printFolder(pastaId) {
-    stopAutoScroll();
     const pasta = state.pastas.find((p) => p.id === pastaId);
     if (!pasta) return;
     const songsToPrint = (pasta.musicas_ids || []).map(getSongById).filter(Boolean);
@@ -955,16 +1009,12 @@
       return;
     }
 
-    const docTitle = `Pasta: ${pasta.nome} (${songsToPrint.length} músicas)`;
     const blocks = songsToPrint
       .map((song, idx) => buildPrintableSongHtml(song, idx < songsToPrint.length - 1))
       .join("");
 
-    el.printArea.innerHTML = `
-      <h1 class="print-doc-title">Meu-cifra-club Club — ${escapeHtml(docTitle)}</h1>
-      ${blocks}
-    `;
-    window.print();
+    el.printArea.innerHTML = blocks;
+    triggerPrintWithFit();
   }
 
   // ------------------------------------------------------------------------

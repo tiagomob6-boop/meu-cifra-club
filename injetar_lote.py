@@ -4,9 +4,22 @@ import psycopg2
 from bs4 import BeautifulSoup
 
 # =========================================================================
-# COLE SUA CONNECTION STRING DO NEON.DB ABAIXO:
+# LÊ A CONNECTION STRING DO .ENV OU DA VARIÁVEL DE AMBIENTE
 # =========================================================================
-NEON_DATABASE_URL = "postgresql://neondb_owner:npg_dJQ0Z3rKctvs@ep-little-brook-b6n36s4u-pooler.c-2.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+def obter_database_url() -> str:
+    url = os.environ.get("NEON_DATABASE_URL", "").strip()
+    if url:
+        return url
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if os.path.isfile(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("NEON_DATABASE_URL="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return ""
+
+NEON_DATABASE_URL = obter_database_url()
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
@@ -140,8 +153,8 @@ def importar_de_arquivo_e_salvar(conn, titulo: str, cantor: str, autor: str | No
 
 
 def main():
-    if "SEU_USUARIO" in NEON_DATABASE_URL:
-        print("⚠️ Cole sua NEON_DATABASE_URL válida na linha 11 antes de executar!")
+    if not NEON_DATABASE_URL:
+        print("⚠️ Variável NEON_DATABASE_URL não configurada no ambiente ou no .env!")
         return
 
     pasta_txt = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cifras_txt")
