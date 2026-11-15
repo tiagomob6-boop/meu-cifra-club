@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meu-cifra-club Club — Gerenciador de Repertório & Cifras</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Interface principal (oculta na impressão via @media print) -->
+  <div id="app-shell">
+    <header class="top-bar">
+      <div class="brand">
+        <span class="brand-icon" aria-hidden="true">🎸</span>
+        <div>
+          <h1>Meu-cifra-club Club</h1>
+          <span class="brand-sub">Repertório &amp; Cifras</span>
+        </div>
+      </div>
+
+      <div class="top-actions">
+        <button id="btn-api-status" class="status-pill" title="Configurar URL da API Python">
+          <span class="status-dot" id="api-status-dot"></span>
+          <span id="api-status-text">Conectando...</span>
+        </button>
+
+        <button id="btn-print-repertorio" class="btn btn-secondary">
+          📄 Gerar PDF do Setlist / Repertório
+        </button>
+
+        <button id="btn-open-add-modal" class="btn btn-primary">
+          + Adicionar Música
+        </button>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <!-- Barra lateral: Catálogo, Pastas e Setlist do Dia -->
+      <aside class="sidebar">
+        <div class="sidebar-tabs" role="tablist">
+          <button class="tab-btn active" data-tab="catalogo" role="tab" aria-selected="true">
+            Catálogo (<span id="count-catalogo">0</span>)
+          </button>
+          <button class="tab-btn" data-tab="pastas" role="tab" aria-selected="false">
+            Pastas (<span id="count-pastas">0</span>)
+          </button>
+          <button class="tab-btn" data-tab="setlist" role="tab" aria-selected="false">
+            Setlist (<span id="count-setlist">0</span>)
+          </button>
+        </div>
+
+        <!-- Painel Catálogo -->
+        <div id="tab-catalogo" class="tab-panel active">
+          <div class="search-box">
+            <input
+              type="search"
+              id="search-input"
+              placeholder="Buscar por título, cantor ou autor..."
+              autocomplete="off"
+            />
+          </div>
+          <ul id="song-list" class="song-list"></ul>
+        </div>
+
+        <!-- Painel Pastas / Repertórios -->
+        <div id="tab-pastas" class="tab-panel">
+          <div class="folder-header-bar">
+            <button id="btn-nova-pasta" class="btn btn-secondary btn-sm" style="width: 100%;">
+              📁 + Criar Nova Pasta
+            </button>
+          </div>
+          <div class="folder-select-wrap">
+            <label for="select-active-folder" class="folder-label">Pasta selecionada:</label>
+            <div class="folder-select-row">
+              <select id="select-active-folder" class="folder-select"></select>
+              <button id="btn-delete-folder" class="btn btn-danger btn-xs" title="Excluir esta pasta">🗑️</button>
+              <button id="btn-print-folder" class="btn btn-secondary btn-xs" title="Gerar PDF desta pasta">🖨️</button>
+            </div>
+          </div>
+          <ul id="folder-song-list" class="song-list"></ul>
+        </div>
+
+        <!-- Painel Setlist do Dia -->
+        <div id="tab-setlist" class="tab-panel">
+          <div class="setlist-actions-bar">
+            <button id="btn-print-setlist-sidebar" class="btn btn-secondary btn-sm">
+              📄 PDF do Setlist
+            </button>
+            <button id="btn-clear-setlist" class="btn btn-ghost btn-sm">
+              Limpar
+            </button>
+          </div>
+          <p class="setlist-hint">Arraste ou use as setas ↑ ↓ para reordenar o setlist.</p>
+          <ul id="setlist-list" class="song-list"></ul>
+        </div>
+      </aside>
+
+      <!-- Área Principal: Visualizador de Cifra Interativo -->
+      <main class="viewer" id="viewer">
+        <div id="viewer-empty" class="viewer-empty">
+          <div class="empty-card">
+            <span class="empty-icon">🎶</span>
+            <h2>Nenhuma música selecionada</h2>
+            <p>
+              Escolha uma música no catálogo ao lado ou clique em
+              <strong>"+ Adicionar Música"</strong> para buscar uma cifra automaticamente na internet e salvá-la no Neon.db.
+            </p>
+            <button id="btn-empty-add" class="btn btn-primary">+ Adicionar Música</button>
+          </div>
+        </div>
+
+        <div id="viewer-content" class="viewer-content hidden">
+          <!-- Cabeçalho da Música -->
+          <div class="song-header">
+            <div class="song-meta">
+              <h2 id="view-titulo"></h2>
+              <p class="song-artists">
+                <span id="view-cantor"></span>
+                <span id="view-autor-wrap" class="hidden"> • Composição: <strong id="view-autor"></strong></span>
+              </p>
+            </div>
+
+            <div class="song-header-actions">
+              <button id="btn-add-to-folder" class="btn btn-secondary btn-sm" title="Adicionar ou remover de pastas">
+                📁 Pastas
+              </button>
+              <button id="btn-toggle-setlist" class="btn btn-secondary btn-sm">
+                + Setlist
+              </button>
+              <button id="btn-edit-song" class="btn btn-secondary btn-sm">
+                ✏️ Editar
+              </button>
+              <button id="btn-delete-song" class="btn btn-danger btn-sm">
+                🗑️ Excluir
+              </button>
+              <button id="btn-print-song" class="btn btn-primary btn-sm">
+                🖨️ Imprimir / Salvar PDF
+              </button>
+            </div>
+          </div>
+
+          <!-- Barra de Controles Interativos -->
+          <div class="controls-bar">
+            <!-- Transposição de Tom -->
+            <div class="control-group">
+              <span class="control-label">Tom</span>
+              <div class="transpose-controls">
+                <button id="btn-transpose-down" class="btn btn-ctrl" title="Diminuir meio tom">-½ Tom</button>
+                <span id="view-tom-badge" class="tom-badge" title="Tom atual">C</span>
+                <button id="btn-transpose-up" class="btn btn-ctrl" title="Aumentar meio tom">+½ Tom</button>
+                <button id="btn-transpose-reset" class="btn btn-ghost btn-xs hidden" title="Voltar ao tom original">↺</button>
+              </div>
+            </div>
+
+            <!-- Alternância Com Solo / Sem Solo -->
+            <div class="control-group">
+              <span class="control-label">Tablatura / Solo</span>
+              <div class="solo-toggle" role="group" aria-label="Exibição de solo">
+                <button id="btn-solo-off" class="solo-opt active" data-solo="false">Sem Solo</button>
+                <button id="btn-solo-on" class="solo-opt" data-solo="true">Com Solo</button>
+              </div>
+            </div>
+
+            <!-- Rolagem Automática (Auto-Scroll) -->
+            <div class="control-group autoscroll-group">
+              <span class="control-label">Auto-Scroll</span>
+              <div class="autoscroll-controls">
+                <button id="btn-autoscroll-toggle" class="btn btn-ctrl">
+                  ▶ Iniciar Rolagem
+                </button>
+                <label class="speed-control" for="scroll-speed">
+                  <span>Vel.</span>
+                  <input type="range" id="scroll-speed" min="1" max="10" step="1" value="3" />
+                  <strong id="scroll-speed-val">3</strong>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Área da Cifra -->
+          <div id="cifra-scroll-container" class="cifra-scroll-container">
+            <pre id="cifra-display" class="cifra-display"></pre>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Modal: + Adicionar Música -->
+  <div id="modal-add" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-add-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modal-add-title">+ Adicionar Música</h3>
+        <button class="modal-close" data-close-modal="modal-add" aria-label="Fechar">&times;</button>
+      </div>
+
+      <form id="form-add-music" class="modal-form">
+        <div class="form-field">
+          <label for="add-titulo">Nome da Música *</label>
+          <input type="text" id="add-titulo" required placeholder="Ex: Evidências" />
+        </div>
+
+        <div class="form-field">
+          <label for="add-cantor">Cantor / Artista *</label>
+          <input type="text" id="add-cantor" required placeholder="Ex: Chitãozinho & Xororó" />
+        </div>
+
+        <div class="form-field">
+          <label for="add-autor">Autor / Compositor <span class="opt">(opcional)</span></label>
+          <input type="text" id="add-autor" placeholder="Ex: José Augusto / Paulo Sérgio Valle" />
+        </div>
+
+        <div class="form-field">
+          <label for="add-tom">Tom da Música <span class="opt">(opcional)</span></label>
+          <input
+            type="text"
+            id="add-tom"
+            placeholder="Ex: G, Am, D (ou deixe vazio para automático)"
+          />
+        </div>
+
+        <div class="form-field">
+          <span class="field-label">Formato de Exibição</span>
+          <div class="radio-switch">
+            <label class="radio-card">
+              <input type="radio" name="add-solo-mode" value="false" checked />
+              <span>Sem solo (apenas cifra e letra)</span>
+            </label>
+            <label class="radio-card">
+              <input type="radio" name="add-solo-mode" value="true" />
+              <span>Com solo (manter tablatura)</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label for="add-cifra-manual">Cifra Manual <span class="opt">(opcional — cole aqui se o site bloquear a busca automática)</span></label>
+          <textarea
+            id="add-cifra-manual"
+            rows="5"
+            class="code-textarea"
+            placeholder="Deixe vazio para buscar na internet, ou cole a cifra copiada do navegador..."
+          ></textarea>
+        </div>
+
+        <div id="add-loading" class="loading-banner hidden">
+          <span class="spinner" aria-hidden="true"></span>
+          <span>Buscando cifra na internet e salvando no banco...</span>
+        </div>
+
+        <div id="add-error" class="error-banner hidden"></div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close-modal="modal-add">Cancelar</button>
+          <button type="submit" id="btn-submit-add" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Editar Música -->
+  <div id="modal-edit" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-edit-title">
+    <div class="modal-card modal-card-lg">
+      <div class="modal-header">
+        <h3 id="modal-edit-title">Editar Música</h3>
+        <button class="modal-close" data-close-modal="modal-edit" aria-label="Fechar">&times;</button>
+      </div>
+
+      <form id="form-edit-music" class="modal-form">
+        <div class="form-row-2">
+          <div class="form-field">
+            <label for="edit-titulo">Nome da Música *</label>
+            <input type="text" id="edit-titulo" required />
+          </div>
+          <div class="form-field">
+            <label for="edit-cantor">Cantor / Artista *</label>
+            <input type="text" id="edit-cantor" required />
+          </div>
+        </div>
+
+        <div class="form-row-2">
+          <div class="form-field">
+            <label for="edit-autor">Autor / Compositor</label>
+            <input type="text" id="edit-autor" />
+          </div>
+          <div class="form-field">
+            <label for="edit-tom">Tom Original Salvo *</label>
+            <input type="text" id="edit-tom" required />
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label for="edit-cifra-completa">Cifra Completa (com solos/tablaturas)</label>
+          <textarea id="edit-cifra-completa" rows="9" class="code-textarea"></textarea>
+        </div>
+
+        <div class="form-field">
+          <label for="edit-cifra-sem-solo">Cifra Limpa (sem solo)</label>
+          <textarea id="edit-cifra-sem-solo" rows="9" class="code-textarea"></textarea>
+        </div>
+
+        <div id="edit-error" class="error-banner hidden"></div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close-modal="modal-edit">Cancelar</button>
+          <button type="submit" id="btn-submit-edit" class="btn btn-primary">Salvar Alterações</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Nova Pasta -->
+  <div id="modal-pasta-nova" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-pasta-nova-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modal-pasta-nova-title">📁 Nova Pasta / Repertório</h3>
+        <button class="modal-close" data-close-modal="modal-pasta-nova" aria-label="Fechar">&times;</button>
+      </div>
+      <form id="form-nova-pasta" class="modal-form">
+        <div class="form-field">
+          <label for="pasta-nome">Nome da Pasta *</label>
+          <input type="text" id="pasta-nome" required placeholder="Ex: Modão Raiz, Acústico Barzinho, Show de Sábado" />
+        </div>
+        <div class="form-field">
+          <label for="pasta-cor">Cor de Destaque</label>
+          <input type="color" id="pasta-cor" value="#ff7a18" style="height: 40px; padding: 2px; cursor: pointer;" />
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close-modal="modal-pasta-nova">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Criar Pasta</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Gerenciar Pastas da Música -->
+  <div id="modal-song-folders" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-song-folders-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modal-song-folders-title">📁 Pastas da Música</h3>
+        <button class="modal-close" data-close-modal="modal-song-folders" aria-label="Fechar">&times;</button>
+      </div>
+      <div class="modal-form">
+        <p style="margin: 0; font-size: 0.9rem; color: var(--text-secondary);">
+          Selecione em quais pastas deseja incluir <strong id="song-folder-music-title"></strong>:
+        </p>
+        <div id="song-folders-checklist" style="display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; padding: 4px;"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-primary" data-close-modal="modal-song-folders">Concluir</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Configurar URL da API -->
+  <div id="modal-api" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-api-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modal-api-title">Configurar Servidor Python (API)</h3>
+        <button class="modal-close" data-close-modal="modal-api" aria-label="Fechar">&times;</button>
+      </div>
+      <form id="form-api-url" class="modal-form">
+        <div class="form-field">
+          <label for="api-url-input">URL Base da API FastAPI</label>
+          <input type="url" id="api-url-input" required placeholder="http://localhost:8000" />
+          <small class="field-hint">
+            Use <code>http://localhost:8000</code> localmente ou a URL do seu backend em produção (ex: Render, Railway, Fly.io).
+          </small>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close-modal="modal-api">Fechar</button>
+          <button type="submit" class="btn btn-primary">Aplicar e Reconectar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Notificações Toast -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <!-- Área dedicada exclusivamente à impressão / PDF (@media print) -->
+  <section id="print-area" aria-hidden="true"></section>
+
+  <script src="app.js"></script>
+</body>
+</html>
