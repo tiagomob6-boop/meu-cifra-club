@@ -11,7 +11,7 @@
   };
 
   const state = {
-    apiBaseUrl: (localStorage.getItem(STORAGE_KEYS.API_URL) || "http://localhost:8000").replace(/\/+$/, ""),
+    apiBaseUrl: (localStorage.getItem(STORAGE_KEYS.API_URL) || "https://meu-cifra-club.onrender.com").replace(/\/+$/, ""),
     musicas: [],
     pastas: [],
     selectedFolderId: null,
