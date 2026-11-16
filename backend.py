@@ -122,17 +122,9 @@ app = FastAPI(
 )
 
 # Habilita CORS para permitir acesso do Frontend local ou hospedado (ex: GitHub Pages)
-origins_env = os.environ.get("ALLOWED_ORIGINS", "*").strip()
-if not origins_env or origins_env == "*":
-    allow_origins = ["*"]
-else:
-    allow_origins = [o.strip().rstrip("/") for o in origins_env.split(",") if o.strip()]
-    if not allow_origins:
-        allow_origins = ["*"]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allow_origins,
+    allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
