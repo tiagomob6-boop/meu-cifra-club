@@ -358,9 +358,13 @@
   // Comunicação com a API FastAPI
   // ------------------------------------------------------------------------
   async function apiFetch(path, options = {}) {
+    const headers = { ...(options.headers || {}) };
+    if (options.body && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
     const res = await fetch(`${state.apiBaseUrl}${path}`, {
-      headers: { "Content-Type": "application/json", ...(options.headers || {}) },
       ...options,
+      headers,
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
